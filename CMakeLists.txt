@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.5)
 project(SeaCut)
 
 message(STATUS "LLVM_DIR is ${LLVM_DIR}")
-find_package(LLVM 9.0 REQUIRED CONFIG EXACT PATHS ${LLVM_DIR})
+find_package(LLVM 8.0 REQUIRED CONFIG EXACT PATHS ${LLVM_DIR})
 
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")

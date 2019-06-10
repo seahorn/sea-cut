@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.5)
 project(SeaCut)
 
 message(STATUS "LLVM_DIR is ${LLVM_DIR}")
-find_package(LLVM 8.0 REQUIRED CONFIG EXACT PATHS ${LLVM_DIR})
+find_package(LLVM 9.0 REQUIRED CONFIG EXACT PATHS ${LLVM_DIR})
 
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
@@ -36,19 +36,38 @@ if("${LLVM_LIBS}" STREQUAL "")
 endif()
 
 SET(CLANG_LIBS
-	clangAnalysis
-	clangAST
-	clangBasic
-	clangDriver
-	clangEdit
-	clangFrontend
-	clangLex
-	clangParse
-	clangRewrite
-	clangSema
-	clangSerialization
-	clangTooling
-	clangASTMatchers
+		clangAnalysis
+		clangARCMigrate
+		clangAST
+		clangASTMatchers
+		clangBasic
+		clangCodeGen
+		clangCrossTU
+		clangDriver
+		clangDynamicASTMatchers
+		clangEdit
+		clangFormat
+		clangFrontend
+		clangFrontendTool
+		clangHandleCXX
+		clangHandleLLVM
+		clangIndex
+		clangLex
+		clangParse
+		clangRewrite
+		clangRewriteFrontend
+		clangSema
+		clangSerialization
+		clangStaticAnalyzerCheckers
+		clangStaticAnalyzerCore
+		clangStaticAnalyzerFrontend
+		clangTooling
+		clangToolingASTDiff
+		clangToolingCore
+		clangToolingInclusions
+		clangToolingRefactor
+		clangToolingRefactoring
+		clangToolingSyntax
 )
 
 add_compile_options(-fno-rtti)

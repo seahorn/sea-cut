@@ -94,10 +94,15 @@ public:
 
 int main(int argc, const char **argv) {
     CommonOptionsParser OptionsParser(argc, argv, MatcherCategory);
+    static llvm::cl::OptionCategory ToolingSampleCategory("Tooling Sample");
+    CommonOptionsParser OptionsParser2(argc, argv, ToolingSampleCategory);
+
     ClangTool Tool(OptionsParser.getCompilations(),
                    OptionsParser.getSourcePathList());
-    RefactoringTool tool2 (OptionsParser.getCompilations(),
-                                           OptionsParser.getSourcePathList());
+
+    RefactoringTool Tool2(OptionsParser2.getCompilations(),
+                           OptionsParser2.getSourcePathList());
+    std::cout << "herrerere" << "\n";
     MatchFinder Finder;
 //    DeclarationMatcher Matcher = functionDecl(
 //            hasAnyParameter(hasType(recordDecl(matchesName("std::vector"))));
@@ -106,10 +111,10 @@ int main(int argc, const char **argv) {
 //    Finder.addMatcher(
 //            cStyleCastExpr(unless(isExpansionInSystemHeader())).bind("cast"), &Alert);
     FunctionDumper HandlerForFunction;
-    stringDumper HandlerForFunction2(reinterpret_cast<Replacements *>(&tool2.getReplacements()));
+//    stringDumper HandlerForFunction2(reinterpret_cast<Replacements *>(&tool2.getReplacements()));
 //    Finder.addMatcher(functionDecl().bind("stuff"),&HandlerForFunction);
 //    Finder.addMatcher(callExpr(hasParent(compoundStmt()),hasDescendant(implicitCastExpr())).bind("stuff"),&HandlerForFunction);
-    Finder.addMatcher(cxxMethodDecl(hasParent(cxxRecordDecl(hasName("vector"))),hasAncestor(namespaceDecl(hasName("std")))).bind("stuff"),&HandlerForFunction2);
+//    Finder.addMatcher(cxxMethodDecl(hasParent(cxxRecordDecl(hasName("vector"))),hasAncestor(namespaceDecl(hasName("std")))).bind("stuff"),&HandlerForFunction2);
 //    Finder.addMatcher(friendDecl(hasParent(cxxRecordDecl(hasName("Box")))).bind("stuff"),&HandlerForFunction);
 //    Finder.addMatcher(cxxConstructorDecl(hasParent(cxxRecordDecl(hasName("String")))).bind("stuff"),&HandlerForFunction);
 //    Finder.addMatcher(cxxDestructorDecl(hasParent(cxxRecordDecl(hasName("String")))).bind("stuff"),&HandlerForFunction);
@@ -126,6 +131,6 @@ int main(int argc, const char **argv) {
 //                            to(varDecl(hasType(pointsTo(AnyType))).bind("lhs")))))))),
 //            &HandlerForIf);
 
-    return tool2.run(newFrontendActionFactory(&Finder).get());
+    return Tool.run(newFrontendActionFactory(&Finder).get());
 }
 

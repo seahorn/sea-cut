@@ -1,9 +1,0 @@
-/Applications/CLion.app/Contents/bin/cmake/mac/bin/cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_BUILD_TYPE=Release -DLLVM_DIR=/Users/MichelleWang/Desktop/ura/clang+llvm-8.0.0-x86_64-apple-darwin -G "CodeBlocks - Unix Makefiles" /Users/MichelleWang/Desktop/ura/SeaSTL/SeaCut
--- LLVM_DIR is /Users/MichelleWang/Desktop/ura/clang+llvm-8.0.0-x86_64-apple-darwin
--- Found LLVM 8.0.0
--- Using LLVMConfig.cmake in: /Users/MichelleWang/Desktop/ura/clang+llvm-8.0.0-x86_64-apple-darwin/lib/cmake/llvm
--- Linker detection: ld64
--- Building with -fPIC
--- Configuring done
--- Generating done
--- Build files have been written to: /Users/MichelleWang/Desktop/ura/SeaSTL/SeaCut/cmake-build-release

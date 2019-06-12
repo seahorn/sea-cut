@@ -65,7 +65,6 @@ SET(CLANG_LIBS
 		clangToolingASTDiff
 		clangToolingCore
 		clangToolingInclusions
-		clangToolingRefactor
 		clangToolingRefactoring
 		clangToolingSyntax
 )

@@ -61,13 +61,6 @@ virtual void run(const MatchFinder::MatchResult &Result) {
 //        lhs->dump();
 //        const CXXMethodDecl *lhs = Result.Nodes.getNodeAs<CXXMethodDecl>("stuff");
 //        lhs->dump();   // YAY found it!!
-
-        if (const FunctionDecl *lhs = Result.Nodes.getNodeAs<FunctionDecl>("stuff")) {
-            //Replacement Rep(*(Result.SourceManager), lhs->getBody(), 0,
-            //"// the 'if' part\n");
-            //Replace->add(Rep);
-        }
-
     }
 };
 
@@ -87,6 +80,16 @@ public:
 
     virtual void run(const MatchFinder::MatchResult &Result) {
         // The matched 'if' statement was bound to 'ifStmt'.
+        std::cout << "herrjhjerere" << "\n";
+        const CXXMethodDecl *lhs = Result.Nodes.getNodeAs<CXXMethodDecl>("stuff");
+        lhs->dump();
+        std::cout << "herrjhjerere" << "\n";
+
+        Replacement Rep(*(Result.SourceManager), lhs->getBeginLoc(), 0,
+                        "// the 'if' part\n");
+        std::cout << "Rep" << "\n";
+        Replace->add(Rep);
+//        lhs->dump();
     }
 };
 
@@ -97,12 +100,11 @@ int main(int argc, const char **argv) {
     static llvm::cl::OptionCategory ToolingSampleCategory("Tooling Sample");
     CommonOptionsParser OptionsParser2(argc, argv, ToolingSampleCategory);
 
-    ClangTool Tool(OptionsParser.getCompilations(),
-                   OptionsParser.getSourcePathList());
+//    ClangTool Tool(OptionsParser.getCompilations(),
+//                   OptionsParser.getSourcePathList());
 
-    RefactoringTool Tool2(OptionsParser2.getCompilations(),
+    RefactoringTool ReTool(OptionsParser2.getCompilations(),
                            OptionsParser2.getSourcePathList());
-    std::cout << "herrerere" << "\n";
     MatchFinder Finder;
 //    DeclarationMatcher Matcher = functionDecl(
 //            hasAnyParameter(hasType(recordDecl(matchesName("std::vector"))));
@@ -110,11 +112,11 @@ int main(int argc, const char **argv) {
 // Match all explicit casts in the main file (exclude system headers).
 //    Finder.addMatcher(
 //            cStyleCastExpr(unless(isExpansionInSystemHeader())).bind("cast"), &Alert);
-    FunctionDumper HandlerForFunction;
-//    stringDumper HandlerForFunction2(reinterpret_cast<Replacements *>(&tool2.getReplacements()));
+//    FunctionDumper HandlerForFunction;
+    stringDumper HandlerForFunction2(reinterpret_cast<Replacements *>(&ReTool.getReplacements()));
 //    Finder.addMatcher(functionDecl().bind("stuff"),&HandlerForFunction);
 //    Finder.addMatcher(callExpr(hasParent(compoundStmt()),hasDescendant(implicitCastExpr())).bind("stuff"),&HandlerForFunction);
-//    Finder.addMatcher(cxxMethodDecl(hasParent(cxxRecordDecl(hasName("vector"))),hasAncestor(namespaceDecl(hasName("std")))).bind("stuff"),&HandlerForFunction2);
+    Finder.addMatcher(cxxMethodDecl(hasParent(cxxRecordDecl(hasName("vector"))),hasAncestor(namespaceDecl(hasName("std")))).bind("stuff"),&HandlerForFunction2);
 //    Finder.addMatcher(friendDecl(hasParent(cxxRecordDecl(hasName("Box")))).bind("stuff"),&HandlerForFunction);
 //    Finder.addMatcher(cxxConstructorDecl(hasParent(cxxRecordDecl(hasName("String")))).bind("stuff"),&HandlerForFunction);
 //    Finder.addMatcher(cxxDestructorDecl(hasParent(cxxRecordDecl(hasName("String")))).bind("stuff"),&HandlerForFunction);
@@ -131,6 +133,6 @@ int main(int argc, const char **argv) {
 //                            to(varDecl(hasType(pointsTo(AnyType))).bind("lhs")))))))),
 //            &HandlerForIf);
 
-    return Tool.run(newFrontendActionFactory(&Finder).get());
+    return ReTool.run(newFrontendActionFactory(&Finder).get());
 }
 

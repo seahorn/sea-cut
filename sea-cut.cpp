@@ -1,138 +1,150 @@
-// Declares clang::SyntaxOnlyAction.
-//#include "clang/Frontend/FrontendActions.h"
-#include "clang/Tooling/CommonOptionsParser.h"
-#include "clang/Tooling/Tooling.h"
-// Declares llvm::cl::extrahelp.
-#include "llvm/Support/CommandLine.h"
-#include "clang/ASTMatchers/ASTMatchFinder.h"
-#include "clang/ASTMatchers/ASTMatchers.h"
-#include "clang/Basic/Diagnostic.h"
-//#include "clang/Frontend/FrontendActions.h"
-#include "clang/Tooling/CommonOptionsParser.h"
-#include "clang/Tooling/Tooling.h"
-#include "llvm/Support/CommandLine.h"
-#include <iostream>
-#include "clang/Tooling/Core/Replacement.h"
-#include "clang/Tooling/RefactoringCallbacks.h"
-using namespace clang::tooling;
-using namespace llvm;
+//------------------------------------------------------------------------------
+// Tooling sample. Demonstrates:
+//
+// * How to write a simple source tool using libTooling.
+// * How to use RecursiveASTVisitor to find interesting AST nodes.
+// * How to use the Rewriter API to rewrite the source code.
+//
+// Eli Bendersky (eliben@gmail.com)
+// This code is in the public domain
+//------------------------------------------------------------------------------
+#include <sstream>
+#include <string>
 
-//// Apply a custom category to all command-line options so that they are the
-//// only ones displayed.
-//static llvm::cl::OptionCategory MyToolCategory("my-tool options");
-//
-//// CommonOptionsParser declares HelpMessage with a description of the common
-//// command-line options related to the compilation database and input files.
-//// It's nice to have this help message in all tools.
-//static cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
-//
-//// A help message for this specific tool can be added afterwards.
-//static cl::extrahelp MoreHelp("\nMore help text...\n");
-//
-//int main(int argc, const char **argv) {
-//  CommonOptionsParser OptionsParser(argc, argv, MyToolCategory);
-//  ClangTool Tool(OptionsParser.getCompilations(),
-//                 OptionsParser.getSourcePathList());
-//  return Tool.run(newFrontendActionFactory<clang::SyntaxOnlyAction>().get());
-//}
+#include "clang/AST/AST.h"
+#include "clang/AST/ASTConsumer.h"
+#include "clang/AST/RecursiveASTVisitor.h"
+#include "clang/Frontend/ASTConsumers.h"
+#include "clang/Frontend/CompilerInstance.h"
+#include "clang/Frontend/FrontendActions.h"
+#include "clang/Rewrite/Core/Rewriter.h"
+#include "clang/Tooling/CommonOptionsParser.h"
+#include "clang/Tooling/Tooling.h"
+#include "llvm/Support/raw_ostream.h"
+
 using namespace clang;
-using namespace clang::ast_matchers;
+using namespace clang::driver;
+using namespace clang::tooling;
 
-RefactoringCallback::RefactoringCallback() {}
-tooling::Replacements &RefactoringCallback::getReplacements() {
-    return Replace;
-}
+static llvm::cl::OptionCategory ToolingSampleCategory("Tooling Sample");
 
-static llvm::cl::OptionCategory MatcherCategory("AST-matcher options");
-static llvm::cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
-static llvm::cl::extrahelp MoreHelp("\nMoreHelpText");
-
-struct FunctionDumper : public clang::ast_matchers::MatchFinder::MatchCallback {
-//    void printToken(StringRef token) {
-//        size_t tokenlen = token.size();
-//        if ((tokenlen == 0) || (tokenlen > 128))
-//            return;
-//        llvm::outs() << "\"" + token + "\"" << "\n";
-//    }
-
-virtual void run(const MatchFinder::MatchResult &Result) {
-//        const FunctionDecl *lhs = Result.Nodes.getNodeAs<FunctionDecl>("stuff");
-//        const CallExpr *lhs = Result.Nodes.getNodeAs<CallExpr>("stuff");
-//        lhs->dump();
-//        const CXXMethodDecl *lhs = Result.Nodes.getNodeAs<CXXMethodDecl>("stuff");
-//        lhs->dump();   // YAY found it!!
-    }
-};
-
-//struct VectorHandler : public MatchFinder::MatchCallback {
-//    virtual void run(const MatchFinder::MatchResult &Result) {
-//        const VarDecl *lhs = Result.Nodes.getNodeAs<VarDecl>("vector");
-//        lhs->dump();   // YAY found it!!
-//    }
-//};
-
-
-class stringDumper : public MatchFinder::MatchCallback {
-private:
-    Replacements *Replace;
+// By implementing RecursiveASTVisitor, we can specify which AST nodes
+// we're interested in by overriding relevant methods.
+class MyASTVisitor : public RecursiveASTVisitor<MyASTVisitor> {
 public:
-    stringDumper(Replacements *Replace) : Replace(Replace) {}
+    MyASTVisitor(Rewriter &R) : TheRewriter(R) {}
 
-    virtual void run(const MatchFinder::MatchResult &Result) {
-        // The matched 'if' statement was bound to 'ifStmt'.
-        std::cout << "herrjhjerere" << "\n";
-        const CXXMethodDecl *lhs = Result.Nodes.getNodeAs<CXXMethodDecl>("stuff");
-        lhs->dump();
-        std::cout << "herrjhjerere" << "\n";
+    bool VisitStmt(Stmt *s) {
+        // Only care about If statements.
+        if (isa<IfStmt>(s)) {
+            IfStmt *IfStatement = cast<IfStmt>(s);
+            Stmt *Then = IfStatement->getThen();
 
-        Replacement Rep(*(Result.SourceManager), lhs->getBeginLoc(), 0,
-                        "// the 'if' part\n");
-        std::cout << "Rep" << "\n";
-        Replace->add(Rep);
-//        lhs->dump();
+            TheRewriter.InsertText(Then->getBeginLoc(), "// the 'if' part\n", true,
+                                   true);
+
+            Stmt *Else = IfStatement->getElse();
+            if (Else)
+                TheRewriter.InsertText(Else->getBeginLoc(), "// the 'else' part\n",
+                                       true, true);
+        }
+
+        return true;
     }
+
+    bool VisitFunctionDecl(FunctionDecl *f) {
+        // Only function definitions (with bodies), not declarations.
+        if (f->hasBody()) {
+
+
+
+            Stmt *FuncBody = f->getBody();
+            //TheRewriter.RemoveText(f->getBeginLoc(), f->getSourceRange());
+            TheRewriter.ReplaceText(f->getSourceRange(), "");
+            /*
+            // Type name as string
+            QualType QT = f->getReturnType();
+            std::string TypeStr = QT.getAsString();
+
+            // Function name
+            DeclarationName DeclName = f->getNameInfo().getName();
+            std::string FuncName = DeclName.getAsString();
+
+            // Add comment before
+            std::stringstream SSBefore;
+            SSBefore << "// Begin function " << FuncName << " returning " << TypeStr
+                     << "\n";
+            SourceLocation ST = f->getSourceRange().getBegin();
+            TheRewriter.InsertText(ST, SSBefore.str(), true, true);
+
+            // And after
+            std::stringstream SSAfter;
+            SSAfter << "\n// End function " << FuncName;
+            ST = FuncBody->getEndLoc().getLocWithOffset(1);
+            TheRewriter.InsertText(ST, SSAfter.str(), true, true);
+             */
+        }
+
+        return true;
+    }
+
+private:
+    Rewriter &TheRewriter;
 };
 
+// Implementation of the ASTConsumer interface for reading an AST produced
+// by the Clang parser.
+class MyASTConsumer : public ASTConsumer {
+public:
+    MyASTConsumer(Rewriter &R) : Visitor(R) {}
 
+    // Override the method that gets called for each parsed top-level
+    // declaration.
+    bool HandleTopLevelDecl(DeclGroupRef DR) override {
+        for (DeclGroupRef::iterator b = DR.begin(), e = DR.end(); b != e; ++b) {
+            // Traverse the declaration using our AST visitor.
+            Visitor.TraverseDecl(*b);
+            (*b)->dumpColor();
+        }
+        return true;
+    }
+
+private:
+    MyASTVisitor Visitor;
+};
+
+// For each source file provided to the tool, a new FrontendAction is created.
+class MyFrontendAction : public ASTFrontendAction {
+public:
+    MyFrontendAction() {}
+    void EndSourceFileAction() override {
+        SourceManager &SM = TheRewriter.getSourceMgr();
+        llvm::errs() << "** EndSourceFileAction for: "
+                     << SM.getFileEntryForID(SM.getMainFileID())->getName() << "\n";
+
+        // Now emit the rewritten buffer.
+        TheRewriter.getEditBuffer(SM.getMainFileID()).write(llvm::outs());
+    }
+
+    std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &CI,
+                                                   StringRef file) override {
+        llvm::errs() << "** Creating AST consumer for: " << file << "\n";
+        TheRewriter.setSourceMgr(CI.getSourceManager(), CI.getLangOpts());
+        return llvm::make_unique<MyASTConsumer>(TheRewriter);
+    }
+
+private:
+    Rewriter TheRewriter;
+};
 
 int main(int argc, const char **argv) {
-    CommonOptionsParser OptionsParser(argc, argv, MatcherCategory);
-    static llvm::cl::OptionCategory ToolingSampleCategory("Tooling Sample");
-    CommonOptionsParser OptionsParser2(argc, argv, ToolingSampleCategory);
+    CommonOptionsParser op(argc, argv, ToolingSampleCategory);
+    ClangTool Tool(op.getCompilations(), op.getSourcePathList());
 
-//    ClangTool Tool(OptionsParser.getCompilations(),
-//                   OptionsParser.getSourcePathList());
-
-    RefactoringTool ReTool(OptionsParser2.getCompilations(),
-                           OptionsParser2.getSourcePathList());
-    MatchFinder Finder;
-//    DeclarationMatcher Matcher = functionDecl(
-//            hasAnyParameter(hasType(recordDecl(matchesName("std::vector"))));
-
-// Match all explicit casts in the main file (exclude system headers).
-//    Finder.addMatcher(
-//            cStyleCastExpr(unless(isExpansionInSystemHeader())).bind("cast"), &Alert);
-//    FunctionDumper HandlerForFunction;
-    stringDumper HandlerForFunction2(reinterpret_cast<Replacements *>(&ReTool.getReplacements()));
-//    Finder.addMatcher(functionDecl().bind("stuff"),&HandlerForFunction);
-//    Finder.addMatcher(callExpr(hasParent(compoundStmt()),hasDescendant(implicitCastExpr())).bind("stuff"),&HandlerForFunction);
-    Finder.addMatcher(cxxMethodDecl(hasParent(cxxRecordDecl(hasName("vector"))),hasAncestor(namespaceDecl(hasName("std")))).bind("stuff"),&HandlerForFunction2);
-//    Finder.addMatcher(friendDecl(hasParent(cxxRecordDecl(hasName("Box")))).bind("stuff"),&HandlerForFunction);
-//    Finder.addMatcher(cxxConstructorDecl(hasParent(cxxRecordDecl(hasName("String")))).bind("stuff"),&HandlerForFunction);
-//    Finder.addMatcher(cxxDestructorDecl(hasParent(cxxRecordDecl(hasName("String")))).bind("stuff"),&HandlerForFunction);
-
-//    VectorHandler HandlerForRecords;
-//    Finder.addMatcher(
-//            functionDecl(
-//            hasAnyParameter(hasType(recordDecl(matchesName("std::vector")).bind("vector")))), &HandlerForRecords);
-
-//    Finder.addMatcher(
-//            ifStmt(hasCondition(binaryOperator(
-//                    hasOperatorName("=="),
-//                    hasLHS(ignoringParenImpCasts(declRefExpr(
-//                            to(varDecl(hasType(pointsTo(AnyType))).bind("lhs")))))))),
-//            &HandlerForIf);
-
-    return ReTool.run(newFrontendActionFactory(&Finder).get());
+    // ClangTool::run accepts a FrontendActionFactory, which is then used to
+    // create new objects implementing the FrontendAction interface. Here we use
+    // the helper newFrontendActionFactory to create a default factory that will
+    // return a new MyFrontendAction object every time.
+    // To further customize this, we could create our own factory class.
+    return Tool.run(newFrontendActionFactory<MyFrontendAction>().get());
 }
-

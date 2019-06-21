@@ -5,11 +5,11 @@
 #include "clang/Frontend/TextDiagnosticPrinter.h"
 #include "clang/Rewrite/Core/Rewriter.h"
 #include "clang/Tooling/CommonOptionsParser.h"
-#include "clang/Tooling/Tooling.h"
-#include "llvm/Support/CommandLine.h"
-
 #include "clang/Tooling/Core/Replacement.h"
 #include "clang/Tooling/RefactoringCallbacks.h"
+#include "clang/Tooling/Tooling.h"
+
+#include "llvm/Support/CommandLine.h"
 
 using namespace llvm;
 using namespace clang;
@@ -86,8 +86,7 @@ public:
 };
 
 int main(int argc, const char **argv) {
-  CommonOptionsParser OptionsParser(argc, argv, MatcherCategory);
-  static llvm::cl::OptionCategory ToolingSampleCategory("Tooling Sample");
+  llvm::cl::OptionCategory ToolingSampleCategory("Tooling Sample");
   CommonOptionsParser parser(argc, argv, ToolingSampleCategory);
 
   auto files = parser.getSourcePathList();
@@ -102,7 +101,7 @@ int main(int argc, const char **argv) {
 
   auto &fileMgr = reTool.getFiles();
   IntrusiveRefCntPtr<DiagnosticOptions> DiagOpts(new DiagnosticOptions());
-  clang::TextDiagnosticPrinter DiagnosticPrinter(errs(), &*DiagOpts);
+  clang::TextDiagnosticPrinter DiagnosticPrinter(llvm::errs(), &*DiagOpts);
   DiagnosticsEngine Diagnostics(
       IntrusiveRefCntPtr<DiagnosticIDs>(new DiagnosticIDs()), &*DiagOpts,
       &DiagnosticPrinter, false);
@@ -110,12 +109,15 @@ int main(int argc, const char **argv) {
   Rewriter rewriter(sources, LangOptions());
   reTool.applyAllReplacements(rewriter);
 
-  llvm::outs() << "File after applying replacements:\n";
+  llvm::errs() << "File after applying replacements:";
+  size_t i = 0;
 
   for (const auto &file : files) {
+    llvm::errs() << "\n#" << (i++) << " " << file << "\n";
     const auto *entry = fileMgr.getFile(file);
     const auto ID = sources.getOrCreateFileID(entry, SrcMgr::C_User);
-    rewriter.getEditBuffer(ID).write(outs());
+    rewriter.getEditBuffer(ID).write(llvm::outs());
+    llvm::outs() << "\n";
   }
 
   return 0;

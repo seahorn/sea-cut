@@ -25,12 +25,18 @@ tooling::Replacements &RefactoringCallback::getReplacements() {
   return Replace;
 }
 
-static const CXXMethodDecl *findDefinition(ASTContext &Context) {
-  auto Results =
-      match(cxxMethodDecl(hasParent(cxxRecordDecl(hasName("vector"))),
-                          hasAncestor(namespaceDecl(hasName("std"))))
-                .bind("stuff"),
-            Context);
+
+//static const void MatcherFormatter(std::string parentName, std::string AncestorName, std::string BindName,ASTContext &Context, SmallVectorImpl<BoundNodes> &res){
+//    res =  match(cxxMethodDecl(hasParent(cxxRecordDecl(hasName(parentName))),
+//                               hasAncestor(namespaceDecl(hasName(AncestorName)))).bind(BindName),Context);
+//}
+
+
+
+static const CXXMethodDecl *findDefinition(ASTContext &Context, std::string parentName, std::string AncestorName, std::string BindName) {
+
+    auto Results =  match(cxxMethodDecl(hasParent(cxxRecordDecl(hasName(parentName))),
+                               hasAncestor(namespaceDecl(hasName(AncestorName)))).bind(BindName),Context);
 
   if (Results.empty()) {
     llvm::errs() << "Definition not found\n";
@@ -51,7 +57,7 @@ public:
   DeleteBodyConsumer &operator=(const DeleteBodyConsumer &) = delete;
 
   void HandleTranslationUnit(ASTContext &Context) override {
-    const CXXMethodDecl *MD = findDefinition(Context);
+    const CXXMethodDecl *MD = findDefinition(Context, "vector", "std", "stuff");
     if (!MD)
       return;
 

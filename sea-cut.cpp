@@ -25,27 +25,6 @@ tooling::Replacements &RefactoringCallback::getReplacements() {
   return Replace;
 }
 
-
-//static const void MatcherFormatter(std::string parentName, std::string AncestorName, std::string BindName,ASTContext &Context, SmallVectorImpl<BoundNodes> &res){
-//    res =  match(cxxMethodDecl(hasParent(cxxRecordDecl(hasName(parentName))),
-//                               hasAncestor(namespaceDecl(hasName(AncestorName)))).bind(BindName),Context);
-//}
-
-
-
-static const CXXMethodDecl *findDefinition(ASTContext &Context, std::string parentName, std::string AncestorName, std::string BindName) {
-
-    auto Results =  match(cxxMethodDecl(hasParent(cxxRecordDecl(hasName(parentName))),
-                               hasAncestor(namespaceDecl(hasName(AncestorName)))).bind(BindName),Context);
-
-  if (Results.empty()) {
-    llvm::errs() << "Definition not found\n";
-    return nullptr;
-  }
-
-  return selectFirst<CXXMethodDecl>("stuff", Results);
-}
-
 class DeleteBodyConsumer : public ASTConsumer {
   std::map<std::string, tooling::Replacements> &m_replacements;
 
@@ -55,6 +34,25 @@ public:
 
   DeleteBodyConsumer(const DeleteBodyConsumer &) = delete;
   DeleteBodyConsumer &operator=(const DeleteBodyConsumer &) = delete;
+
+  static const CXXMethodDecl *findDefinition(ASTContext &Context,
+                                             StringRef parentName,
+                                             StringRef AncestorName,
+                                             StringRef BindName) {
+
+    auto Results =
+        match(cxxMethodDecl(hasParent(cxxRecordDecl(hasName(parentName))),
+                            hasAncestor(namespaceDecl(hasName(AncestorName))))
+                  .bind(BindName),
+              Context);
+
+    if (Results.empty()) {
+      llvm::errs() << "Definition not found\n";
+      return nullptr;
+    }
+
+    return selectFirst<CXXMethodDecl>("stuff", Results);
+  }
 
   void HandleTranslationUnit(ASTContext &Context) override {
     const CXXMethodDecl *MD = findDefinition(Context, "vector", "std", "stuff");

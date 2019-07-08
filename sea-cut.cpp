@@ -19,6 +19,10 @@ using namespace clang::tooling;
 static llvm::cl::OptionCategory MatcherCategory("AST-matcher options");
 static llvm::cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
 static llvm::cl::extrahelp MoreHelp("\nMoreHelpText");
+cl::list<std::string> InputParam1("l", cl::OneOrMore);
+cl::list<std::string> InputParam2(cl::Positional, cl::OneOrMore);
+
+
 
 RefactoringCallback::RefactoringCallback() {}
 tooling::Replacements &RefactoringCallback::getReplacements() {
@@ -36,9 +40,17 @@ public:
   DeleteBodyConsumer &operator=(const DeleteBodyConsumer &) = delete;
 
   static const CXXMethodDecl *findDefinition(ASTContext &Context,
-                                             StringRef parentName,
-                                             StringRef AncestorName,
                                              StringRef BindName) {
+//      llvm::outs() << "jrerherererere";
+//      llvm::outs() << InputParam1[0];
+//      llvm::outs() << InputParam2[0];
+//      llvm::outs() << "jrerherererere";
+
+      StringRef parentName;
+      StringRef AncestorName;
+      parentName = InputParam1[0];
+      AncestorName = InputParam2[0];
+
 
     auto Results =
         match(cxxMethodDecl(hasParent(cxxRecordDecl(hasName(parentName))),
@@ -55,7 +67,7 @@ public:
   }
 
   void HandleTranslationUnit(ASTContext &Context) override {
-    const CXXMethodDecl *MD = findDefinition(Context, "vector", "std", "stuff");
+    const CXXMethodDecl *MD = findDefinition(Context, "stuff");
     if (!MD)
       return;
 
@@ -92,6 +104,7 @@ public:
 int main(int argc, const char **argv) {
   llvm::cl::OptionCategory ToolingSampleCategory("Tooling Sample");
   CommonOptionsParser parser(argc, argv, ToolingSampleCategory);
+  llvm::cl::ParseCommandLineOptions(argc, argv);
 
   auto files = parser.getSourcePathList();
   RefactoringTool reTool(parser.getCompilations(), parser.getSourcePathList());

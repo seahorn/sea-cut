@@ -1,150 +1,128 @@
-//------------------------------------------------------------------------------
-// Tooling sample. Demonstrates:
-//
-// * How to write a simple source tool using libTooling.
-// * How to use RecursiveASTVisitor to find interesting AST nodes.
-// * How to use the Rewriter API to rewrite the source code.
-//
-// Eli Bendersky (eliben@gmail.com)
-// This code is in the public domain
-//------------------------------------------------------------------------------
-#include <sstream>
-#include <string>
-
-#include "clang/AST/AST.h"
-#include "clang/AST/ASTConsumer.h"
-#include "clang/AST/RecursiveASTVisitor.h"
-#include "clang/Frontend/ASTConsumers.h"
-#include "clang/Frontend/CompilerInstance.h"
+#include "clang/ASTMatchers/ASTMatchFinder.h"
+#include "clang/ASTMatchers/ASTMatchers.h"
+#include "clang/Basic/Diagnostic.h"
 #include "clang/Frontend/FrontendActions.h"
+#include "clang/Frontend/TextDiagnosticPrinter.h"
 #include "clang/Rewrite/Core/Rewriter.h"
 #include "clang/Tooling/CommonOptionsParser.h"
+#include "clang/Tooling/Core/Replacement.h"
+#include "clang/Tooling/RefactoringCallbacks.h"
 #include "clang/Tooling/Tooling.h"
-#include "llvm/Support/raw_ostream.h"
 
+#include "llvm/Support/CommandLine.h"
+
+using namespace llvm;
 using namespace clang;
-using namespace clang::driver;
+using namespace clang::ast_matchers;
 using namespace clang::tooling;
 
-static llvm::cl::OptionCategory ToolingSampleCategory("Tooling Sample");
+static llvm::cl::OptionCategory MatcherCategory("AST-matcher options");
+static llvm::cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
+static llvm::cl::extrahelp MoreHelp("\nMoreHelpText");
 
-// By implementing RecursiveASTVisitor, we can specify which AST nodes
-// we're interested in by overriding relevant methods.
-class MyASTVisitor : public RecursiveASTVisitor<MyASTVisitor> {
+RefactoringCallback::RefactoringCallback() {}
+tooling::Replacements &RefactoringCallback::getReplacements() {
+  return Replace;
+}
+
+class DeleteBodyConsumer : public ASTConsumer {
+  std::map<std::string, tooling::Replacements> &m_replacements;
+
 public:
-    MyASTVisitor(Rewriter &R) : TheRewriter(R) {}
+  DeleteBodyConsumer(std::map<std::string, tooling::Replacements> &replacements)
+      : m_replacements(replacements) {}
 
-    bool VisitStmt(Stmt *s) {
-        // Only care about If statements.
-        if (isa<IfStmt>(s)) {
-            IfStmt *IfStatement = cast<IfStmt>(s);
-            Stmt *Then = IfStatement->getThen();
+  DeleteBodyConsumer(const DeleteBodyConsumer &) = delete;
+  DeleteBodyConsumer &operator=(const DeleteBodyConsumer &) = delete;
 
-            TheRewriter.InsertText(Then->getBeginLoc(), "// the 'if' part\n", true,
-                                   true);
+  static const CXXMethodDecl *findDefinition(ASTContext &Context,
+                                             StringRef parentName,
+                                             StringRef AncestorName,
+                                             StringRef BindName) {
 
-            Stmt *Else = IfStatement->getElse();
-            if (Else)
-                TheRewriter.InsertText(Else->getBeginLoc(), "// the 'else' part\n",
-                                       true, true);
-        }
+    auto Results =
+        match(cxxMethodDecl(hasParent(cxxRecordDecl(hasName(parentName))),
+                            hasAncestor(namespaceDecl(hasName(AncestorName))))
+                  .bind(BindName),
+              Context);
 
-        return true;
+    if (Results.empty()) {
+      llvm::errs() << "Definition not found\n";
+      return nullptr;
     }
 
-    bool VisitFunctionDecl(FunctionDecl *f) {
-        // Only function definitions (with bodies), not declarations.
-        if (f->hasBody()) {
+    return selectFirst<CXXMethodDecl>("stuff", Results);
+  }
 
+  void HandleTranslationUnit(ASTContext &Context) override {
+    const CXXMethodDecl *MD = findDefinition(Context, "vector", "std", "stuff");
+    if (!MD)
+      return;
 
+    llvm::errs() << "Match found:\n";
+    MD->dump();
 
-            Stmt *FuncBody = f->getBody();
-            //TheRewriter.RemoveText(f->getBeginLoc(), f->getSourceRange());
-            TheRewriter.ReplaceText(f->getSourceRange(), "");
-            /*
-            // Type name as string
-            QualType QT = f->getReturnType();
-            std::string TypeStr = QT.getAsString();
+    SourceRange body = MD->getBody()->getSourceRange();
+    StringRef newBody = ";";
 
-            // Function name
-            DeclarationName DeclName = f->getNameInfo().getName();
-            std::string FuncName = DeclName.getAsString();
+    tooling::Replacement replacement(Context.getSourceManager(),
+                                     CharSourceRange::getTokenRange(body),
+                                     newBody, Context.getLangOpts());
+    llvm::errs() << "New replacement: \n" << replacement.toString() << "\n";
 
-            // Add comment before
-            std::stringstream SSBefore;
-            SSBefore << "// Begin function " << FuncName << " returning " << TypeStr
-                     << "\n";
-            SourceLocation ST = f->getSourceRange().getBegin();
-            TheRewriter.InsertText(ST, SSBefore.str(), true, true);
-
-            // And after
-            std::stringstream SSAfter;
-            SSAfter << "\n// End function " << FuncName;
-            ST = FuncBody->getEndLoc().getLocWithOffset(1);
-            TheRewriter.InsertText(ST, SSAfter.str(), true, true);
-             */
-        }
-
-        return true;
-    }
-
-private:
-    Rewriter &TheRewriter;
+    consumeError(m_replacements[replacement.getFilePath()].add(replacement));
+  }
 };
 
-// Implementation of the ASTConsumer interface for reading an AST produced
-// by the Clang parser.
-class MyASTConsumer : public ASTConsumer {
+class DeleteBodyAction {
+  std::map<std::string, tooling::Replacements> &m_replacements;
+
 public:
-    MyASTConsumer(Rewriter &R) : Visitor(R) {}
+  DeleteBodyAction(std::map<std::string, tooling::Replacements> &replacements)
+      : m_replacements(replacements) {}
 
-    // Override the method that gets called for each parsed top-level
-    // declaration.
-    bool HandleTopLevelDecl(DeclGroupRef DR) override {
-        for (DeclGroupRef::iterator b = DR.begin(), e = DR.end(); b != e; ++b) {
-            // Traverse the declaration using our AST visitor.
-            Visitor.TraverseDecl(*b);
-            (*b)->dumpColor();
-        }
-        return true;
-    }
+  DeleteBodyAction(const DeleteBodyAction &) = delete;
+  DeleteBodyAction &operator=(const DeleteBodyAction &) = delete;
 
-private:
-    MyASTVisitor Visitor;
-};
-
-// For each source file provided to the tool, a new FrontendAction is created.
-class MyFrontendAction : public ASTFrontendAction {
-public:
-    MyFrontendAction() {}
-    void EndSourceFileAction() override {
-        SourceManager &SM = TheRewriter.getSourceMgr();
-        llvm::errs() << "** EndSourceFileAction for: "
-                     << SM.getFileEntryForID(SM.getMainFileID())->getName() << "\n";
-
-        // Now emit the rewritten buffer.
-        TheRewriter.getEditBuffer(SM.getMainFileID()).write(llvm::outs());
-    }
-
-    std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &CI,
-                                                   StringRef file) override {
-        llvm::errs() << "** Creating AST consumer for: " << file << "\n";
-        TheRewriter.setSourceMgr(CI.getSourceManager(), CI.getLangOpts());
-        return llvm::make_unique<MyASTConsumer>(TheRewriter);
-    }
-
-private:
-    Rewriter TheRewriter;
+  std::unique_ptr<ASTConsumer> newASTConsumer() {
+    return llvm::make_unique<DeleteBodyConsumer>(m_replacements);
+  }
 };
 
 int main(int argc, const char **argv) {
-    CommonOptionsParser op(argc, argv, ToolingSampleCategory);
-    ClangTool Tool(op.getCompilations(), op.getSourcePathList());
+  llvm::cl::OptionCategory ToolingSampleCategory("Tooling Sample");
+  CommonOptionsParser parser(argc, argv, ToolingSampleCategory);
 
-    // ClangTool::run accepts a FrontendActionFactory, which is then used to
-    // create new objects implementing the FrontendAction interface. Here we use
-    // the helper newFrontendActionFactory to create a default factory that will
-    // return a new MyFrontendAction object every time.
-    // To further customize this, we could create our own factory class.
-    return Tool.run(newFrontendActionFactory<MyFrontendAction>().get());
+  auto files = parser.getSourcePathList();
+  RefactoringTool reTool(parser.getCompilations(), parser.getSourcePathList());
+
+  DeleteBodyAction action(reTool.getReplacements());
+
+  auto factory = tooling::newFrontendActionFactory(&action);
+
+  if (int result = reTool.run(factory.get()))
+    return result;
+
+  auto &fileMgr = reTool.getFiles();
+  IntrusiveRefCntPtr<DiagnosticOptions> DiagOpts(new DiagnosticOptions());
+  clang::TextDiagnosticPrinter DiagnosticPrinter(llvm::errs(), &*DiagOpts);
+  DiagnosticsEngine Diagnostics(
+      IntrusiveRefCntPtr<DiagnosticIDs>(new DiagnosticIDs()), &*DiagOpts,
+      &DiagnosticPrinter, false);
+  SourceManager sources(Diagnostics, fileMgr);
+  Rewriter rewriter(sources, LangOptions());
+  reTool.applyAllReplacements(rewriter);
+
+  llvm::errs() << "File after applying replacements:";
+  size_t i = 0;
+
+  for (const auto &file : files) {
+    llvm::errs() << "\n#" << (i++) << " " << file << "\n";
+    const auto *entry = fileMgr.getFile(file);
+    const auto ID = sources.getOrCreateFileID(entry, SrcMgr::C_User);
+    rewriter.getEditBuffer(ID).write(llvm::outs());
+    llvm::outs() << "\n";
+  }
+
+  return 0;
 }

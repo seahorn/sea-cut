@@ -7,7 +7,7 @@ find_package(LLVM 9.0 REQUIRED CONFIG EXACT PATHS ${LLVM_DIR})
 
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
-        
+
 list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
 include(AddLLVM)
 include(HandleLLVMOptions)
@@ -105,10 +105,11 @@ find_package(Threads REQUIRED)
 
 target_link_libraries(sea-cut
 	${LLVM_SYSTEM_LIBS}
-        ${LLVM_LIBS}
+  ${LLVM_LIBS}
 	${CLANG_LIBS}
-    )
+  )
 
+add_subdirectory(tests)
 
 # add_executable(test-smt-jit doctest_main_smt_jit.cpp
 #  ${SEACUT_SOURCES}
@@ -119,3 +120,4 @@ target_link_libraries(sea-cut
 
 # enable_testing()
 # add_test(NAME test-smt-jit COMMAND test-smt-jit DEPENDS test-smt-jit)
+

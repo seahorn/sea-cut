@@ -1,12 +1,13 @@
-// RUN: %sea-cut %s 2>&1 | grep -v '^//' | OutputCheck %s -d --comment='//'
-//1. same namespace, same class, same function number but different parameter
-//2. lower/upper function names
-//3. different namespace, same class name, same function name and parameters
-//4. same namespace, different class, same function name and parameter
-//5. function signature of the nested class should not be removed, only the function body
-//6. structure body should not be removed
-//7. functions in comments are neglected
-//8. inline function are neglected
+// RUN: %sea-cut %s --namespace std --class vector  2>/dev/null | grep -v '^//' | OutputCheck %s -d --comment='//'
+
+// 1. In std: same namespace, same class, same function name but different parameter
+// 2. lower/upper function names
+// 3. different namespace (i.e., not std), same class name, same function name and parameters
+// 4. same namespace, different class (i.e., not vector), same function name and parameter
+// 5. function signature of the nested class should not be removed, only the function body
+// 6. structure body should not be removed
+// 7. functions in comments are not affected
+// 8. inline function are handled
 
 namespace std {
 
@@ -39,11 +40,10 @@ class vector {
     //  CHECK-L: void bar(int) {}
     //void bar(int) {}
 
-    // CHECK-NOT-L: testfunction();
+    // CHECK-L: testfunction();
     inline void testfunction(){};
 
     // CHECK-L: void push_back(const T&) ;
-    // CHECK-NOT-L: std::bar(1);
       void push_back(const T&) {
          std::bar(1);
       }
@@ -65,7 +65,7 @@ class vector {
 
 class test1 {
 
-// CHECK-L: void push_back(int a) ;
+// CHECK-L: void push_back(int a) {
     void push_back(int a) {
         std::bar(1);
     }
@@ -75,7 +75,7 @@ class test1 {
 namespace testnamespace{
     class vector {
 
-// CHECK-L: void push_back(int a) ;
+// CHECK-L: void push_back(int a) {
         void push_back(int a) {
             std::bar(1);
         }

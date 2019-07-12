@@ -16,11 +16,11 @@ using namespace clang;
 using namespace clang::ast_matchers;
 using namespace clang::tooling;
 
-static llvm::cl::OptionCategory MatcherCategory("AST-matcher options");
+static llvm::cl::OptionCategory SeaCutCategory("SeaCut options");
 static llvm::cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
 static llvm::cl::extrahelp MoreHelp("\nMoreHelpText");
-cl::list<std::string> InputParam1("l", cl::OneOrMore);
-cl::list<std::string> InputParam2(cl::Positional, cl::OneOrMore);
+cl::opt<std::string> NamespaceName("namespace", cl::cat(SeaCutCategory));
+cl::opt<std::string> ClassName("class", cl::cat(SeaCutCategory));
 
 
 
@@ -39,50 +39,49 @@ public:
   DeleteBodyConsumer(const DeleteBodyConsumer &) = delete;
   DeleteBodyConsumer &operator=(const DeleteBodyConsumer &) = delete;
 
-  static const CXXMethodDecl *findDefinition(ASTContext &Context,
+  static const SmallVector<BoundNodes, 1> findDefinition(ASTContext &Context,
                                              StringRef BindName) {
 //      llvm::outs() << "jrerherererere";
-//      llvm::outs() << InputParam1[0];
-//      llvm::outs() << InputParam2[0];
+//      llvm::outs() << ClassName[0];
+//      llvm::outs() << NamespaceName[0];
 //      llvm::outs() << "jrerherererere";
 
       StringRef parentName;
       StringRef AncestorName;
-      parentName = InputParam1[0];
-      AncestorName = InputParam2[0];
+      parentName = ClassName;
+      AncestorName = NamespaceName;
 
-
-    auto Results =
+      SmallVector<BoundNodes, 1> Results =
         match(cxxMethodDecl(hasParent(cxxRecordDecl(hasName(parentName))),
                             hasAncestor(namespaceDecl(hasName(AncestorName))))
                   .bind(BindName),
               Context);
 
-    if (Results.empty()) {
-      llvm::errs() << "Definition not found\n";
-      return nullptr;
-    }
-
-    return selectFirst<CXXMethodDecl>("stuff", Results);
+    return Results;
   }
 
   void HandleTranslationUnit(ASTContext &Context) override {
-    const CXXMethodDecl *MD = findDefinition(Context, "stuff");
-    if (!MD)
-      return;
+    auto Matches = findDefinition(Context, "stuff");
 
-    llvm::errs() << "Match found:\n";
-    MD->dump();
+      for (const BoundNodes &N : Matches) {
+          const CXXMethodDecl *MD = N.getNodeAs<CXXMethodDecl>("stuff");
+          if (!MD)
+              return;
 
-    SourceRange body = MD->getBody()->getSourceRange();
-    StringRef newBody = ";";
+          llvm::errs() << "Match found:\n";
+          MD->dump();
 
-    tooling::Replacement replacement(Context.getSourceManager(),
-                                     CharSourceRange::getTokenRange(body),
-                                     newBody, Context.getLangOpts());
-    llvm::errs() << "New replacement: \n" << replacement.toString() << "\n";
+          SourceRange body = MD->getBody()->getSourceRange();
+          StringRef newBody = ";";
 
-    consumeError(m_replacements[replacement.getFilePath()].add(replacement));
+          tooling::Replacement replacement(Context.getSourceManager(),
+                                           CharSourceRange::getTokenRange(body),
+                                           newBody, Context.getLangOpts());
+          llvm::errs() << "New replacement: \n" << replacement.toString() << "\n";
+
+          consumeError(m_replacements[replacement.getFilePath()].add(replacement));
+      }
+
   }
 };
 
@@ -102,9 +101,7 @@ public:
 };
 
 int main(int argc, const char **argv) {
-  llvm::cl::OptionCategory ToolingSampleCategory("Tooling Sample");
-  CommonOptionsParser parser(argc, argv, ToolingSampleCategory);
-  llvm::cl::ParseCommandLineOptions(argc, argv);
+  CommonOptionsParser parser(argc, argv, SeaCutCategory);
 
   auto files = parser.getSourcePathList();
   RefactoringTool reTool(parser.getCompilations(), parser.getSourcePathList());

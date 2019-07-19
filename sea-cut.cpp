@@ -41,10 +41,6 @@ public:
 
   static const SmallVector<BoundNodes, 1> findDefinition(ASTContext &Context,
                                              StringRef BindName) {
-//      llvm::outs() << "jrerherererere";
-//      llvm::outs() << ClassName[0];
-//      llvm::outs() << NamespaceName[0];
-//      llvm::outs() << "jrerherererere";
 
       StringRef parentName;
       StringRef AncestorName;
@@ -60,16 +56,59 @@ public:
     return Results;
   }
 
+  void ExtractMethod(SmallVector<BoundNodes, 1> Matches){
+      const CXXMethodDecl* MD = selectFirst<CXXMethodDecl>("stuff", Matches);
+      const DeclContext *parent = MD->getParent();
+
+      //Get all namespace;
+      int nameSpaceCount = 0;
+      while (parent) {
+          if (parent->isNamespace()) {
+              nameSpaceCount++;
+              const NamespaceDecl *namespaceDecl = cast<NamespaceDecl>(parent);
+              llvm::errs() << "namespace " << namespaceDecl->getName() << " {\n";
+          }
+          parent = parent->getParent();
+      }
+
+
+      for (const BoundNodes &N : Matches) {
+          const CXXMethodDecl *MD = N.getNodeAs<CXXMethodDecl>("stuff");
+          if (!MD) return;
+          PrintMethod(MD, nameSpaceCount);
+      }
+
+      for (int i = 0; i < nameSpaceCount; i++) {
+          llvm::errs() << "}\n";
+      }
+  }
+
+  void PrintMethod(const CXXMethodDecl *MD, int nameSpaceCount) {
+
+      const DeclContext *methodParent = MD->getParent();
+      while (methodParent) {
+          if (methodParent->isRecord()) {
+              const RecordDecl* recordDecl = cast<RecordDecl>(methodParent);
+              llvm::errs() << recordDecl->getName() << "::";
+          }
+          methodParent = methodParent->getParent();
+      }
+
+      MD->print(llvm::errs(), nameSpaceCount, false);
+  }
+
   void HandleTranslationUnit(ASTContext &Context) override {
     auto Matches = findDefinition(Context, "stuff");
+    if (Matches.size() < 1) return;
+      ExtractMethod(Matches);
 
       for (const BoundNodes &N : Matches) {
           const CXXMethodDecl *MD = N.getNodeAs<CXXMethodDecl>("stuff");
           if (!MD)
               return;
 
-          llvm::errs() << "Match found:\n";
-          MD->dump();
+          //llvm::errs() << "Match found:\n";
+          //MD->dump();
 
           SourceRange body = MD->getBody()->getSourceRange();
           StringRef newBody = ";";
@@ -77,7 +116,7 @@ public:
           tooling::Replacement replacement(Context.getSourceManager(),
                                            CharSourceRange::getTokenRange(body),
                                            newBody, Context.getLangOpts());
-          llvm::errs() << "New replacement: \n" << replacement.toString() << "\n";
+          //llvm::errs() << "New replacement: \n" << replacement.toString() << "\n";
 
           consumeError(m_replacements[replacement.getFilePath()].add(replacement));
       }
@@ -123,9 +162,10 @@ int main(int argc, const char **argv) {
   Rewriter rewriter(sources, LangOptions());
   reTool.applyAllReplacements(rewriter);
 
-  llvm::errs() << "File after applying replacements:";
+  //llvm::errs() << "File after applying replacements:";
   size_t i = 0;
 
+  /*
   for (const auto &file : files) {
     llvm::errs() << "\n#" << (i++) << " " << file << "\n";
     const auto *entry = fileMgr.getFile(file);
@@ -133,6 +173,7 @@ int main(int argc, const char **argv) {
     rewriter.getEditBuffer(ID).write(llvm::outs());
     llvm::outs() << "\n";
   }
+   */
 
   return 0;
 }

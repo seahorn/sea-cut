@@ -10,6 +10,7 @@
 #include "clang/Tooling/Tooling.h"
 
 #include "llvm/Support/CommandLine.h"
+#include <fstream>
 
 using namespace llvm;
 using namespace clang;
@@ -22,8 +23,6 @@ static llvm::cl::extrahelp MoreHelp("\nMoreHelpText");
 cl::opt<std::string> NamespaceName("namespace", cl::cat(SeaCutCategory));
 cl::opt<std::string> ClassName("class", cl::cat(SeaCutCategory));
 
-
-
 RefactoringCallback::RefactoringCallback() {}
 tooling::Replacements &RefactoringCallback::getReplacements() {
   return Replace;
@@ -31,6 +30,7 @@ tooling::Replacements &RefactoringCallback::getReplacements() {
 
 class DeleteBodyConsumer : public ASTConsumer {
   std::map<std::string, tooling::Replacements> &m_replacements;
+  std::ofstream newFile;
 
 public:
   DeleteBodyConsumer(std::map<std::string, tooling::Replacements> &replacements)
@@ -40,14 +40,14 @@ public:
   DeleteBodyConsumer &operator=(const DeleteBodyConsumer &) = delete;
 
   static const SmallVector<BoundNodes, 1> findDefinition(ASTContext &Context,
-                                             StringRef BindName) {
+                                                         StringRef BindName) {
 
-      StringRef parentName;
-      StringRef AncestorName;
-      parentName = ClassName;
-      AncestorName = NamespaceName;
+    StringRef parentName;
+    StringRef AncestorName;
+    parentName = ClassName;
+    AncestorName = NamespaceName;
 
-      SmallVector<BoundNodes, 1> Results =
+    SmallVector<BoundNodes, 1> Results =
         match(cxxMethodDecl(hasParent(cxxRecordDecl(hasName(parentName))),
                             hasAncestor(namespaceDecl(hasName(AncestorName))))
                   .bind(BindName),
@@ -56,71 +56,158 @@ public:
     return Results;
   }
 
-  void ExtractMethod(SmallVector<BoundNodes, 1> Matches){
-      const CXXMethodDecl* MD = selectFirst<CXXMethodDecl>("stuff", Matches);
-      const DeclContext *parent = MD->getParent();
+  void ExtractMethod(SmallVector<BoundNodes, 1> Matches, ASTContext &Context) {
 
-      //Get all namespace;
-      int nameSpaceCount = 0;
-      while (parent) {
-          if (parent->isNamespace()) {
-              nameSpaceCount++;
-              const NamespaceDecl *namespaceDecl = cast<NamespaceDecl>(parent);
-              llvm::errs() << "namespace " << namespaceDecl->getName() << " {\n";
-          }
-          parent = parent->getParent();
+    llvm::errs() << "New File:\n";
+
+    newFile.open ("file.cpp");
+    auto *MD = selectFirst<CXXMethodDecl>("stuff", Matches);
+    const DeclContext *parent = MD->getParent();
+
+    // Get all namespace;
+    unsigned nameSpaceCount = 0;
+    while (parent) {
+      if (parent->isNamespace()) {
+        ++nameSpaceCount;
+        auto namespaceDecl = cast<NamespaceDecl>(parent);
+        outs() << "namespace " << namespaceDecl->getName() << " {\n";
+        newFile << "namespace " << namespaceDecl->getName().str() << " {\n";
       }
+      parent = parent->getParent();
+    }
 
+    for (const BoundNodes &N : Matches) {
+      auto MD = N.getNodeAs<CXXMethodDecl>("stuff");
+      if (!MD)
+        return;
+      PrintMethod(MD, Context);
+    }
 
-      for (const BoundNodes &N : Matches) {
-          const CXXMethodDecl *MD = N.getNodeAs<CXXMethodDecl>("stuff");
-          if (!MD) return;
-          PrintMethod(MD, nameSpaceCount);
-      }
+    for (unsigned i = 0; i < nameSpaceCount; i++) {
+      outs() << "}\n";
+      newFile << "}\n";
+    }
 
-      for (int i = 0; i < nameSpaceCount; i++) {
-          llvm::errs() << "}\n";
-      }
+    newFile.close();
+    llvm::errs() << "\n";
   }
 
-  void PrintMethod(const CXXMethodDecl *MD, int nameSpaceCount) {
+  void PrintMethod(const CXXMethodDecl *MD, ASTContext &Context) {
+    PrintTemplateDecl(MD, Context);
+    MD->getReturnType().print(outs(), PrintingPolicy(LangOptions()));
+    outs() << " ";
+    PrintClass(MD);
+    outs() << MD->getName();
+    PrintParameters(MD);
+    MD->getBody()->printPretty(outs(), nullptr, PrintingPolicy(LangOptions()));
+    if (MD->isConst()) {
+      outs() << " const ";
+      newFile << " const ";
+    }
 
-      const DeclContext *methodParent = MD->getParent();
-      while (methodParent) {
-          if (methodParent->isRecord()) {
-              const RecordDecl* recordDecl = cast<RecordDecl>(methodParent);
-              llvm::errs() << recordDecl->getName() << "::";
-          }
-          methodParent = methodParent->getParent();
+    outs() << "\n";
+    newFile << "\n";
+  }
+
+  void PrintTemplateDecl(const CXXMethodDecl *MD, ASTContext &Context) {
+    const DeclContext *methodParent = MD->getParent();
+
+    while (methodParent) {
+
+      if (!methodParent->isRecord()) {
+        methodParent = methodParent->getParent();
+        continue;
       }
 
-      MD->print(llvm::errs(), nameSpaceCount, false);
+      auto templateParameters = cast<RecordDecl>(methodParent)->getDescribedTemplate()->getTemplateParameters();
+      outs() << getTextFromSourceRange(templateParameters->getSourceRange(), Context) << ">\n";
+      newFile << getTextFromSourceRange(templateParameters->getSourceRange(), Context).str() << ">\n";
+
+      methodParent = methodParent->getParent();
+    }
+
+  }
+
+  void PrintParameters(const CXXMethodDecl *MD) {
+    outs() << "(";
+    newFile << "(";
+    for (size_t i = 0; i < MD->param_size(); i++) {
+      MD->getParamDecl(i)->print(outs());
+      if (i < MD->param_size() - 1) {
+        outs() << ", ";
+        newFile << ", ";
+      }
+    }
+    outs() << ")";
+    newFile << ")";
+  }
+
+  void PrintClass(const CXXMethodDecl *MD) {
+
+    const DeclContext *methodParent = MD->getParent();
+    while (methodParent) {
+      if (methodParent->isRecord()) {
+        const RecordDecl *recordDecl = cast<RecordDecl>(methodParent);
+        outs() << recordDecl->getName();
+        newFile << recordDecl->getName().str();
+        PrintTemplate(recordDecl);
+        outs() << "::";
+        newFile << "::";
+      }
+      methodParent = methodParent->getParent();
+    }
+  }
+
+  void PrintTemplate(const RecordDecl *recordDecl) {
+    TemplateParameterList *templateParameterList =
+        recordDecl->getDescribedTemplate()->getTemplateParameters();
+    outs() << "<";
+    newFile << "<";
+    for (unsigned i = 0; i < templateParameterList->size(); i++) {
+      outs() << templateParameterList->getParam(i)->getName();
+      newFile << templateParameterList->getParam(i)->getName().str();
+
+      templateParameterList->getParam(i) -> getSourceRange();
+
+      if (i < templateParameterList->size() - 1) {
+        outs() << ", ";
+        newFile << ", ";
+      }
+
+    }
+    outs() << ">";
+    newFile << ">";
+  }
+
+  StringRef getTextFromSourceRange(SourceRange R, ASTContext &Context) {
+    return Lexer::getSourceText(CharSourceRange::getCharRange(R), Context.getSourceManager(), LangOptions());
   }
 
   void HandleTranslationUnit(ASTContext &Context) override {
     auto Matches = findDefinition(Context, "stuff");
-    if (Matches.size() < 1) return;
-      ExtractMethod(Matches);
+    if (Matches.size() < 1)
+      return;
+    ExtractMethod(Matches, Context);
 
-      for (const BoundNodes &N : Matches) {
-          const CXXMethodDecl *MD = N.getNodeAs<CXXMethodDecl>("stuff");
-          if (!MD)
-              return;
+    for (const BoundNodes &N : Matches) {
+      auto MD = N.getNodeAs<CXXMethodDecl>("stuff");
+      if (!MD)
+        return;
 
-          //llvm::errs() << "Match found:\n";
-          //MD->dump();
+      llvm::errs() << "Match found:\n";
+      MD->dump();
 
-          SourceRange body = MD->getBody()->getSourceRange();
-          StringRef newBody = ";";
+      SourceRange body = MD->getBody()->getSourceRange();
+      StringRef newBody = ";";
 
-          tooling::Replacement replacement(Context.getSourceManager(),
-                                           CharSourceRange::getTokenRange(body),
-                                           newBody, Context.getLangOpts());
-          //llvm::errs() << "New replacement: \n" << replacement.toString() << "\n";
+      tooling::Replacement replacement(Context.getSourceManager(),
+                                       CharSourceRange::getTokenRange(body),
+                                       newBody, Context.getLangOpts());
+      llvm::errs() << "New replacement: \n" << replacement.toString() <<
+      "\n";
 
-          consumeError(m_replacements[replacement.getFilePath()].add(replacement));
-      }
-
+      consumeError(m_replacements[replacement.getFilePath()].add(replacement));
+    }
   }
 };
 
@@ -162,10 +249,9 @@ int main(int argc, const char **argv) {
   Rewriter rewriter(sources, LangOptions());
   reTool.applyAllReplacements(rewriter);
 
-  //llvm::errs() << "File after applying replacements:";
+  llvm::errs() << "File after applying replacements:";
   size_t i = 0;
 
-  /*
   for (const auto &file : files) {
     llvm::errs() << "\n#" << (i++) << " " << file << "\n";
     const auto *entry = fileMgr.getFile(file);
@@ -173,7 +259,6 @@ int main(int argc, const char **argv) {
     rewriter.getEditBuffer(ID).write(llvm::outs());
     llvm::outs() << "\n";
   }
-   */
 
   return 0;
 }

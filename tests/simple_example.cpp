@@ -8,9 +8,11 @@
 // 6. structure body should not be removed
 // 7. functions in comments are not affected
 // 8. inline function are handled
+// 9. nested namespace are handled
+// 10.multiple templates are handled
 
+namespace outer {
 namespace std {
-
 
 //  CHECK-L: void foo();
 void foo();
@@ -18,67 +20,53 @@ void foo();
 // CHECK-NOT-L: void bar(int) ;
 void bar(int) {}
 
-template <typename T>
-class vector {
+template <typename T, class A> class vector {
 
-    class element {
-        //  CHECK-L: test(const T&) ;
-        void test(const T&) {
-            std::bar(1);
-        }
-    };
+  class element {
+    //  CHECK-L: test(const T&) ;
+    void test(const T &) { outer::std::bar(1); }
+  };
 
-    //  CHECK-L: structure remain
-    struct Books {
-        char  title[50];
-        char  author[50];
-        char  subject[100];
-        int   book_id;
-    } book;
+  //  CHECK-L: structure remain
+  struct Books {
+    char title[50];
+    char author[50];
+    char subject[100];
+    int book_id;
+  } book;
 
+  //  CHECK-L: void bar(int) {}
+  // void bar(int) {}
 
-    //  CHECK-L: void bar(int) {}
-    //void bar(int) {}
+  // CHECK-L: testfunction();
+  inline void testfunction(){};
 
-    // CHECK-L: testfunction();
-    inline void testfunction(){};
+  // CHECK-L: void push_back(const T&) ;
+  void push_back(const T &) { outer::std::bar(1); }
 
-    // CHECK-L: void push_back(const T&) ;
-      void push_back(const T&) {
-         std::bar(1);
-      }
+  // CHECK-L: void push_back(int a, int b) ;
+  void push_back(int a, int b) { outer::std::bar(1); }
+  // CHECK-L: void push_back();
+  void push_back() { outer::std::bar(1); }
 
-    // CHECK-L: void push_back(int a, int b) ;
-        void push_back(int a, int b) {
-            std::bar(1);
-        }
-    // CHECK-L: void push_back();
-        void push_back() {
-            std::bar(1);
-        }
-
-    // CHECK-L: void PUSH_BACK();
-        void PUSH_BACK() {
-            std::bar(1);
-        }
+  // CHECK-L: void PUSH_BACK();
+  void PUSH_BACK() { outer::std::bar(1); }
 };
 
 class test1 {
 
-// CHECK-L: void push_back(int a) {
-    void push_back(int a) {
-        std::bar(1);
-    }
+  // CHECK-L: void push_back(int a) {
+  void push_back(int a) { outer::std::bar(1); }
 };
+}
 }
 
 namespace testnamespace{
-    class vector {
+class vector {
 
 // CHECK-L: void push_back(int a) {
-        void push_back(int a) {
-            std::bar(1);
-        }
-    };
+  void push_back(int a) {
+    outer::std::bar(1);
+  }
+};
 }
-

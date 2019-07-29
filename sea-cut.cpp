@@ -22,6 +22,7 @@ static llvm::cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
 static llvm::cl::extrahelp MoreHelp("\nMoreHelpText");
 cl::opt<std::string> NamespaceName("namespace", cl::cat(SeaCutCategory));
 cl::opt<std::string> ClassName("class", cl::cat(SeaCutCategory));
+cl::opt<std::string> FileName("fileName", cl::cat(SeaCutCategory));
 
 RefactoringCallback::RefactoringCallback() {}
 tooling::Replacements &RefactoringCallback::getReplacements() {
@@ -60,8 +61,8 @@ public:
 
     llvm::errs() << "New File:\n";
 
-    newFile.open ("file.cpp");
-    auto *MD = selectFirst<CXXMethodDecl>("stuff", Matches);
+    newFile.open (FileName);
+    auto *MD = selectFirst<CXXMethodDecl>("methods", Matches);
     const DeclContext *parent = MD->getParent();
 
     // Get all namespace;
@@ -69,22 +70,22 @@ public:
     while (parent) {
       if (parent->isNamespace()) {
         ++nameSpaceCount;
-        auto namespaceDecl = cast<NamespaceDecl>(parent);
-        outs() << "namespace " << namespaceDecl->getName() << " {\n";
+        auto *namespaceDecl = cast<NamespaceDecl>(parent);
+        errs() << "namespace " << namespaceDecl->getName() << " {\n";
         newFile << "namespace " << namespaceDecl->getName().str() << " {\n";
       }
       parent = parent->getParent();
     }
 
     for (const BoundNodes &N : Matches) {
-      auto MD = N.getNodeAs<CXXMethodDecl>("stuff");
+      auto *MD = N.getNodeAs<CXXMethodDecl>("methods");
       if (!MD)
         return;
       PrintMethod(MD, Context);
     }
 
     for (unsigned i = 0; i < nameSpaceCount; i++) {
-      outs() << "}\n";
+      errs() << "}\n";
       newFile << "}\n";
     }
 
@@ -94,19 +95,16 @@ public:
 
   void PrintMethod(const CXXMethodDecl *MD, ASTContext &Context) {
     PrintTemplateDecl(MD, Context);
-    MD->getReturnType().print(outs(), PrintingPolicy(LangOptions()));
-    outs() << " ";
+    MD->getReturnType().print(errs(), PrintingPolicy(LangOptions()));
+    errs() << " ";
     PrintClass(MD);
-    outs() << MD->getName();
+    errs() << MD->getName();
     PrintParameters(MD);
-    MD->getBody()->printPretty(outs(), nullptr, PrintingPolicy(LangOptions()));
+    MD->getBody()->printPretty(errs(), nullptr, PrintingPolicy(LangOptions()));
     if (MD->isConst()) {
-      outs() << " const ";
+      errs() << " const ";
       newFile << " const ";
     }
-
-    outs() << "\n";
-    newFile << "\n";
   }
 
   void PrintTemplateDecl(const CXXMethodDecl *MD, ASTContext &Context) {
@@ -119,9 +117,21 @@ public:
         continue;
       }
 
-      auto templateParameters = cast<RecordDecl>(methodParent)->getDescribedTemplate()->getTemplateParameters();
-      outs() << getTextFromSourceRange(templateParameters->getSourceRange(), Context) << ">\n";
-      newFile << getTextFromSourceRange(templateParameters->getSourceRange(), Context).str() << ">\n";
+      auto *record = cast<RecordDecl>(methodParent);
+
+      if (record->isTemplated()) {
+
+        auto *templateParameters = cast<RecordDecl>(methodParent)
+                                       ->getDescribedTemplate()
+                                       ->getTemplateParameters();
+        errs() << getTextFromSourceRange(templateParameters->getSourceRange(),
+                                         Context)
+               << ">\n";
+        newFile << getTextFromSourceRange(templateParameters->getSourceRange(),
+                                          Context)
+                       .str()
+                << ">\n";
+      }
 
       methodParent = methodParent->getParent();
     }
@@ -129,29 +139,28 @@ public:
   }
 
   void PrintParameters(const CXXMethodDecl *MD) {
-    outs() << "(";
+    errs() << "(";
     newFile << "(";
     for (size_t i = 0; i < MD->param_size(); i++) {
-      MD->getParamDecl(i)->print(outs());
+      MD->getParamDecl(i)->print(errs());
       if (i < MD->param_size() - 1) {
-        outs() << ", ";
+        errs() << ", ";
         newFile << ", ";
       }
     }
-    outs() << ")";
+    errs() << ")";
     newFile << ")";
   }
 
   void PrintClass(const CXXMethodDecl *MD) {
-
     const DeclContext *methodParent = MD->getParent();
     while (methodParent) {
       if (methodParent->isRecord()) {
-        const RecordDecl *recordDecl = cast<RecordDecl>(methodParent);
-        outs() << recordDecl->getName();
+        auto *recordDecl = cast<RecordDecl>(methodParent);
+        errs() << recordDecl->getName();
         newFile << recordDecl->getName().str();
         PrintTemplate(recordDecl);
-        outs() << "::";
+        errs() << "::";
         newFile << "::";
       }
       methodParent = methodParent->getParent();
@@ -159,23 +168,25 @@ public:
   }
 
   void PrintTemplate(const RecordDecl *recordDecl) {
+    if (!recordDecl->isTemplated()) return;
+
     TemplateParameterList *templateParameterList =
         recordDecl->getDescribedTemplate()->getTemplateParameters();
-    outs() << "<";
+    errs() << "<";
     newFile << "<";
     for (unsigned i = 0; i < templateParameterList->size(); i++) {
-      outs() << templateParameterList->getParam(i)->getName();
+      errs() << templateParameterList->getParam(i)->getName();
       newFile << templateParameterList->getParam(i)->getName().str();
 
       templateParameterList->getParam(i) -> getSourceRange();
 
       if (i < templateParameterList->size() - 1) {
-        outs() << ", ";
+        errs() << ", ";
         newFile << ", ";
       }
 
     }
-    outs() << ">";
+    errs() << ">";
     newFile << ">";
   }
 
@@ -184,13 +195,13 @@ public:
   }
 
   void HandleTranslationUnit(ASTContext &Context) override {
-    auto Matches = findDefinition(Context, "stuff");
+    auto Matches = findDefinition(Context, "methods");
     if (Matches.size() < 1)
       return;
     ExtractMethod(Matches, Context);
 
     for (const BoundNodes &N : Matches) {
-      auto MD = N.getNodeAs<CXXMethodDecl>("stuff");
+      auto *MD = N.getNodeAs<CXXMethodDecl>("methods");
       if (!MD)
         return;
 

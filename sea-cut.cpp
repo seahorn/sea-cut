@@ -97,6 +97,7 @@ public:
     PrintTemplateDecl(MD, Context);
     MD->getReturnType().print(errs(), PrintingPolicy(LangOptions()));
     errs() << " ";
+    newFile << " ";
     PrintClass(MD);
     errs() << MD->getName();
     PrintParameters(MD);
@@ -119,11 +120,11 @@ public:
 
       auto *record = cast<RecordDecl>(methodParent);
 
-      if (record->isTemplated()) {
+      if (record->isTemplated() && record->getDescribedTemplate()) {
 
-        auto *templateParameters = cast<RecordDecl>(methodParent)
-                                       ->getDescribedTemplate()
+        auto *templateParameters = record->getDescribedTemplate()
                                        ->getTemplateParameters();
+
         errs() << getTextFromSourceRange(templateParameters->getSourceRange(),
                                          Context)
                << ">\n";
@@ -168,7 +169,7 @@ public:
   }
 
   void PrintTemplate(const RecordDecl *recordDecl) {
-    if (!recordDecl->isTemplated()) return;
+    if (!recordDecl->isTemplated() || !recordDecl->getDescribedTemplate()) return;
 
     TemplateParameterList *templateParameterList =
         recordDecl->getDescribedTemplate()->getTemplateParameters();

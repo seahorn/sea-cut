@@ -1,4 +1,8 @@
-// RUN: %sea-cut %s --namespace std --class vector  2>/dev/null | grep -v '^//' | OutputCheck %s -d --comment='//'
+// RUN: %sea-cut %s --namespace std --class vector  2>/dev/null \
+// RUN:  | grep -v '^//' | OutputCheck %s -d --comment='//'
+
+// RUN: %sea-cut %s --namespace std --class vector -aux=%t &&
+// RUN: %cat %t | OutputCheck %s -d --comment='//' --check-prefix=AUX
 
 // 1. In std: same namespace, same class, same function name but different parameter
 // 2. lower/upper function names
@@ -18,6 +22,7 @@ namespace std {
 void foo();
 
 // CHECK-NOT-L: void bar(int) ;
+// AUX-L: void bar(int) {}
 void bar(int) {}
 
 template <typename T, class A> class vector {

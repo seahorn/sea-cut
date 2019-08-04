@@ -10,7 +10,6 @@
 #include "clang/Tooling/Tooling.h"
 
 #include "llvm/Support/CommandLine.h"
-#include <fstream>
 
 using namespace llvm;
 using namespace clang;
@@ -31,11 +30,13 @@ tooling::Replacements &RefactoringCallback::getReplacements() {
 
 class DeleteBodyConsumer : public ASTConsumer {
   std::map<std::string, tooling::Replacements> &m_replacements;
-  std::ofstream newFile;
+  std::error_code code;
+  raw_fd_ostream rawFdOstream;
 
 public:
   DeleteBodyConsumer(std::map<std::string, tooling::Replacements> &replacements)
-      : m_replacements(replacements) {}
+      : m_replacements(replacements), rawFdOstream(FileName, code) {
+  }
 
   DeleteBodyConsumer(const DeleteBodyConsumer &) = delete;
   DeleteBodyConsumer &operator=(const DeleteBodyConsumer &) = delete;
@@ -61,20 +62,26 @@ public:
 
     llvm::errs() << "New File:\n";
 
-    newFile.open (FileName);
     auto *MD = selectFirst<CXXMethodDecl>("methods", Matches);
     const DeclContext *parent = MD->getParent();
 
     // Get all namespace;
     unsigned nameSpaceCount = 0;
+    std::stack<StringRef> s;
     while (parent) {
       if (parent->isNamespace()) {
         ++nameSpaceCount;
         auto *namespaceDecl = cast<NamespaceDecl>(parent);
-        errs() << "namespace " << namespaceDecl->getName() << " {\n";
-        newFile << "namespace " << namespaceDecl->getName().str() << " {\n";
+        s.push(namespaceDecl->getName());
       }
       parent = parent->getParent();
+    }
+
+    while (!s.empty()) {
+        StringRef ns = s.top();
+        s.pop();
+        errs() << "namespace " << ns << " {\n";
+        rawFdOstream << "namespace " << ns << " {\n";
     }
 
     for (const BoundNodes &N : Matches) {
@@ -86,25 +93,27 @@ public:
 
     for (unsigned i = 0; i < nameSpaceCount; i++) {
       errs() << "}\n";
-      newFile << "}\n";
+      rawFdOstream << "}\n";
     }
 
-    newFile.close();
     llvm::errs() << "\n";
+    rawFdOstream.close();
   }
 
   void PrintMethod(const CXXMethodDecl *MD, ASTContext &Context) {
     PrintTemplateDecl(MD, Context);
     MD->getReturnType().print(errs(), PrintingPolicy(LangOptions()));
     errs() << " ";
-    newFile << " ";
+    rawFdOstream << " ";
     PrintClass(MD);
     errs() << MD->getName();
-    PrintParameters(MD);
+    rawFdOstream << MD->getName();
+    PrintParameters(MD, Context);
     MD->getBody()->printPretty(errs(), nullptr, PrintingPolicy(LangOptions()));
+    MD->getBody()->printPretty(rawFdOstream, nullptr, PrintingPolicy(LangOptions()));
     if (MD->isConst()) {
       errs() << " const ";
-      newFile << " const ";
+      rawFdOstream << " const ";
     }
   }
 
@@ -128,29 +137,29 @@ public:
         errs() << getTextFromSourceRange(templateParameters->getSourceRange(),
                                          Context)
                << ">\n";
-        newFile << getTextFromSourceRange(templateParameters->getSourceRange(),
-                                          Context)
-                       .str()
-                << ">\n";
+          rawFdOstream << getTextFromSourceRange(templateParameters->getSourceRange(),
+                                           Context)
+                 << ">\n";
       }
 
       methodParent = methodParent->getParent();
     }
-
   }
 
-  void PrintParameters(const CXXMethodDecl *MD) {
+  void PrintParameters(const CXXMethodDecl *MD,  ASTContext &Context) {
     errs() << "(";
-    newFile << "(";
+    rawFdOstream << "(";
     for (size_t i = 0; i < MD->param_size(); i++) {
       MD->getParamDecl(i)->print(errs());
+      MD->getParamDecl(i)->print(rawFdOstream);
+
       if (i < MD->param_size() - 1) {
         errs() << ", ";
-        newFile << ", ";
+        rawFdOstream << ", ";
       }
     }
     errs() << ")";
-    newFile << ")";
+    rawFdOstream << ")";
   }
 
   void PrintClass(const CXXMethodDecl *MD) {
@@ -159,10 +168,10 @@ public:
       if (methodParent->isRecord()) {
         auto *recordDecl = cast<RecordDecl>(methodParent);
         errs() << recordDecl->getName();
-        newFile << recordDecl->getName().str();
+        rawFdOstream << recordDecl->getName();
         PrintTemplate(recordDecl);
         errs() << "::";
-        newFile << "::";
+        rawFdOstream << "::";
       }
       methodParent = methodParent->getParent();
     }
@@ -174,24 +183,24 @@ public:
     TemplateParameterList *templateParameterList =
         recordDecl->getDescribedTemplate()->getTemplateParameters();
     errs() << "<";
-    newFile << "<";
+    rawFdOstream << "<";
     for (unsigned i = 0; i < templateParameterList->size(); i++) {
       errs() << templateParameterList->getParam(i)->getName();
-      newFile << templateParameterList->getParam(i)->getName().str();
+      rawFdOstream << templateParameterList->getParam(i)->getName();
 
       templateParameterList->getParam(i) -> getSourceRange();
 
       if (i < templateParameterList->size() - 1) {
         errs() << ", ";
-        newFile << ", ";
+        rawFdOstream << ", ";
       }
 
     }
     errs() << ">";
-    newFile << ">";
+    rawFdOstream << ">";
   }
 
-  StringRef getTextFromSourceRange(SourceRange R, ASTContext &Context) {
+  static StringRef getTextFromSourceRange(SourceRange R, ASTContext &Context) {
     return Lexer::getSourceText(CharSourceRange::getCharRange(R), Context.getSourceManager(), LangOptions());
   }
 

@@ -102,19 +102,28 @@ public:
 
   void PrintMethod(const CXXMethodDecl *MD, ASTContext &Context) {
     PrintTemplateDecl(MD, Context);
+
+    if (MD->isInlined()) {
+      errs() << "inline ";
+      rawFdOstream << "inline ";
+    }
+
     MD->getReturnType().print(errs(), PrintingPolicy(LangOptions()));
+    MD->getReturnType().print(rawFdOstream, PrintingPolicy(LangOptions()));
     errs() << " ";
     rawFdOstream << " ";
     PrintClass(MD);
     errs() << MD->getName();
     rawFdOstream << MD->getName();
     PrintParameters(MD, Context);
-    MD->getBody()->printPretty(errs(), nullptr, PrintingPolicy(LangOptions()));
-    MD->getBody()->printPretty(rawFdOstream, nullptr, PrintingPolicy(LangOptions()));
+
     if (MD->isConst()) {
       errs() << " const ";
       rawFdOstream << " const ";
     }
+
+    MD->getBody()->printPretty(errs(), nullptr, PrintingPolicy(LangOptions()));
+    MD->getBody()->printPretty(rawFdOstream, nullptr, PrintingPolicy(LangOptions()));
   }
 
   void PrintTemplateDecl(const CXXMethodDecl *MD, ASTContext &Context) {

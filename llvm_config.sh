@@ -9,6 +9,7 @@ cmake ../llvm-project/llvm -GNinja -DCMAKE_BUILD_TYPE=Debug \
                         -DLLVM_TARGETS_TO_BUILD='X86' \
                         -DLLVM_OPTIMIZED_TABLEGEN=1 \
                         -DLLVM_ENABLE_LLD=1 \
-                        -DCMAKE_CXX_COMPILER=clang++-6.0 -DCMAKE_C_COMPILER=clang-6.0 \
+                        -DLLVM_USE_SPLIT_DWARF=1 \
+                        -DCMAKE_CXX_COMPILER=clang++-8 -DCMAKE_C_COMPILER=clang-8 \
                         -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
                         -DCMAKE_INSTALL_PREFIX=./run
